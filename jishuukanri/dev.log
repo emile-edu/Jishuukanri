@@ -1,0 +1,16 @@
+
+> jishuukanri@0.1.0 dev
+> next dev
+
+   ▲ Next.js 15.1.6
+   - Local:        http://localhost:3000
+   - Network:      http://10.0.1.166:3000
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 2.2s
+ ○ Compiling / ...
+ ✓ Compiled / in 7.8s (805 modules)
+ GET / 200 in 8498ms
+ ✓ Compiled in 782ms (320 modules)
+[?25h
