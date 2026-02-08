@@ -37,18 +37,12 @@ function buildMonthGrid(view: Date) {
 export default function StudentCalendarMonthPage() {
   const router = useRouter();
 
-  const [studentId, setStudentId] = useState<string>("");
-  const [displayName, setDisplayName] = useState<string>("");
+  const studentId = "demo-student";
   const [view, setView] = useState<Date>(() => new Date());
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [errorText, setErrorText] = useState<string>("");
 
   async function loadMonth(sid: string, v: Date) {
-    if (!sid) {
-      setBookings([]);
-      setErrorText("");
-      return;
-    }
     const ym = ymKey(ymd(new Date(v)));
     try {
       setErrorText("");
@@ -63,26 +57,14 @@ export default function StudentCalendarMonthPage() {
 
   // 初回ロード + view変更で月取得
   useEffect(() => {
-    const sid = localStorage.getItem("studentId") ?? "";
-    const dn = localStorage.getItem("displayName") ?? "";
-    setStudentId(sid);
-    setDisplayName(dn);
-
-    if (!sid) {
-      setBookings([]);
-      router.push("/student/login");
-      return;
-    }
-    void loadMonth(sid, view);
+    void loadMonth(studentId, view);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
   // 予約ページから戻ってきた時（iPadのタブ復帰/フォーカス）に再取得
   useEffect(() => {
     const onFocus = () => {
-      const sid = localStorage.getItem("studentId") ?? "";
-      if (!sid) return;
-      void loadMonth(sid, view);
+      void loadMonth(studentId, view);
     };
     const onVis = () => {
       if (document.visibilityState === "visible") onFocus();
@@ -97,10 +79,9 @@ export default function StudentCalendarMonthPage() {
 
   const days = useMemo(() => buildMonthGrid(view), [view]);
 
-  const thisMonthKey = useMemo(() => ymKey(ymd(new Date(view))), [view]);
   const monthCount = useMemo(() => {
-    return bookings.filter((b) => ymKey(b.date) === thisMonthKey).length;
-  }, [bookings, thisMonthKey]);
+    return bookings.length;
+  }, [bookings]);
 
   // 日付→その日の予約（Booking）
   const byDate = useMemo(() => {
@@ -119,8 +100,6 @@ export default function StudentCalendarMonthPage() {
   }, [bookings]);
 
   const logout = () => {
-    localStorage.removeItem("studentId");
-    localStorage.removeItem("displayName");
     router.push("/");
   };
 
@@ -130,13 +109,7 @@ export default function StudentCalendarMonthPage() {
         <div>
           <h1 style={{ margin: 0, fontSize: 22 }}>{monthLabel(view)}</h1>
           <div style={{ marginTop: 6, color: "#555" }}>
-            {displayName ? (
-              <>
-                {displayName}（{studentId}） / 今月の予約合計：{monthCount}/30
-              </>
-            ) : (
-              <>今月の予約合計：{monthCount}/30</>
-            )}
+            今月の予約合計：{monthCount}/30
           </div>
           {errorText && (
             <div style={{ marginTop: 8, color: "crimson", fontSize: 12, whiteSpace: "pre-wrap" }}>
