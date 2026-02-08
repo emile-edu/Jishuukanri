@@ -8,6 +8,7 @@ import {
   getDocs,
   query,
   where,
+  orderBy,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -160,12 +161,20 @@ export async function getBookingsByStudentAndMonth(
   studentId: string,
   ym: string // "YYYY-MM"
 ): Promise<Booking[]> {
+  const [yearStr, monthStr] = ym.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const endDay = new Date(year, month, 0).getDate();
+  const endDayStr = String(endDay).padStart(2, "0");
+  const start = `${ym}-01`;
+  const end = `${ym}-${endDayStr}`;
+
   const q = query(
     collection(db, "bookings"),
     where("studentId", "==", studentId),
-    where("date", ">=", `${ym}-01`),
-    where("date", "<=", `${ym}-31`),
-    where("status", "==", "active")
+    where("date", ">=", start),
+    where("date", "<=", end),
+    orderBy("date", "asc")
   );
 
   const snap = await getDocs(q);
