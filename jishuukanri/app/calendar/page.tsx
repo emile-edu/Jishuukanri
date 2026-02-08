@@ -4,47 +4,8 @@ import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getAuth, signOut } from "firebase/auth";
 
-import { STORAGE_ALL, DEMO_RES_KEY } from "@/app/lib/storageKeys";
-
-import Link from "next/link";
-
-
-
-type Reservation = {
-  id: string;
-  studentId: string;
-  date: string;      // YYYY-MM-DD
-  slot: string;      // "15:00" など
-  subject: string;   // ← Subject じゃなく string
-  purpose: string;   // ← Purpose じゃなく string
-  unit: string;
-  helpLevel: string; // ← HelpLevel じゃなく string
-  createdAt: number;
-};
-
-
-type DemoReservation = {
-  id: string;
-  studentId: string;
-  date: string; // YYYY-MM-DD
-  time: string;
-  subject: string;
-  purpose?: string;
-  unit?: string;
-  help?: string;
-  createdAt: number;
-};
-
-function loadDemoReservations(): DemoReservation[] {
-  try {
-    const raw = localStorage.getItem(DEMO_RES_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
-  } catch {
-    return [];
-  }
-}
+import { getBookingsByMonth } from "@/lib/firestore";
+import type { Booking } from "@/lib/schema";
 
 function ymd(d: Date) {
   const y = d.getFullYear();
@@ -60,44 +21,57 @@ function addMonths(d: Date, delta: number) {
   return new Date(d.getFullYear(), d.getMonth() + delta, 1);
 }
 
-function safeJsonParse<T>(s: string | null, fallback: T): T {
-  if (!s) return fallback;
-  try {
-    return JSON.parse(s) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function loadAll(): Reservation[] {
-  const x = safeJsonParse<Reservation[]>(
-    localStorage.getItem(STORAGE_ALL),
-    []
-  );
-  return Array.isArray(x) ? x : [];
-}
-
 export default function AdminCalendarPage() {
   const router = useRouter();
   const [cursor, setCursor] = useState(() => startOfMonth(new Date()));
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [errorText, setErrorText] = useState<string>("");
 
-  // localStorage 読みはレンダリングごとに変わるので、軽く再評価できるようにする
-  const all = useMemo(() => loadAll(), [cursor]);
-  const debugText = `STORAGE_ALL count = ${all.length}\n` + JSON.stringify(all.slice(0, 3), null, 2);
-useEffect(() => {
-  console.log("STORAGE_ALL", loadAll());
-}, [cursor]);
+  const ymKey = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
 
-  const monthPrefix = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
+  const loadMonth = async (ym: string) => {
+    try {
+      setErrorText("");
+      const list = await getBookingsByMonth(ym);
+      setBookings(list);
+    } catch (e: any) {
+      setBookings([]);
+      setErrorText(e?.message ? String(e.message) : String(e));
+    }
+  };
 
-  const countByDate = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const r of all) {
-      if (!r?.date?.startsWith(monthPrefix)) continue;
-      map.set(r.date, (map.get(r.date) ?? 0) + 1);
+  useEffect(() => {
+    void loadMonth(ymKey);
+  }, [ymKey]);
+
+  useEffect(() => {
+    const onFocus = () => {
+      void loadMonth(ymKey);
+    };
+    const onVis = () => {
+      if (document.visibilityState === "visible") onFocus();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [ymKey]);
+
+  const bookingsByDate = useMemo(() => {
+    const map = new Map<string, Booking[]>();
+    for (const booking of bookings) {
+      const list = map.get(booking.date) ?? [];
+      list.push(booking);
+      map.set(booking.date, list);
+    }
+    for (const [key, list] of map.entries()) {
+      list.sort((a, b) => String(a.slot).localeCompare(String(b.slot)));
+      map.set(key, list);
     }
     return map;
-  }, [all, monthPrefix]);
+  }, [bookings]);
 
   const weeks = useMemo(() => {
     // 月カレンダー(6週)生成
@@ -132,20 +106,18 @@ useEffect(() => {
 
   return (
     <main style={{ padding: 24 }}>
-<pre style={{ whiteSpace: "pre-wrap", fontSize: 12, background: "#f5f5f5", padding: 12, borderRadius: 8 }}>
-{[
-  `origin: ${typeof window !== "undefined" ? location.origin : ""}`,
-  `keys: ${typeof window !== "undefined" ? JSON.stringify(Object.keys(localStorage), null, 2) : ""}`,
-  `STORAGE_ALL raw: ${typeof window !== "undefined" ? String(localStorage.getItem(STORAGE_ALL)) : ""}`,
-  `DEMO_RES_KEY raw: ${typeof window !== "undefined" ? String(localStorage.getItem("DEMO_RES_KEY")) : ""}`,
-].join("\n")}
-</pre>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 700 }}>管理者カレンダー（月表示）</div>
           <div style={{ fontSize: 28, fontWeight: 800, marginTop: 8 }}>
             {cursor.getFullYear()}年{cursor.getMonth() + 1}月
           </div>
+          <div style={{ marginTop: 6, color: "#555" }}>今月の予約合計：{bookings.length}件</div>
+          {errorText && (
+            <div style={{ marginTop: 8, color: "crimson", fontSize: 12, whiteSpace: "pre-wrap" }}>
+              {errorText}
+            </div>
+          )}
         </div>
 
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -191,7 +163,8 @@ useEffect(() => {
             {weeks.map((row, idx) => (
               <tr key={idx}>
                 {row.map((cell) => {
-                  const cnt = countByDate.get(cell.ymd) ?? 0;
+                  const list = bookingsByDate.get(cell.ymd) ?? [];
+                  const cnt = list.length;
                   return (
                     <td
                       key={cell.ymd}
@@ -205,7 +178,7 @@ useEffect(() => {
                     >
                       <div style={{ fontWeight: 700 }}>{cell.date.getDate()}日</div>
                       {cnt > 0 && (
-                        <div style={{ marginTop: 8, fontSize: 12 }}>
+                        <div style={{ marginTop: 8, fontSize: 12, display: "flex", flexDirection: "column", gap: 6 }}>
                           <span
                             style={{
                               display: "inline-block",
@@ -213,10 +186,28 @@ useEffect(() => {
                               borderRadius: 999,
                               border: "1px solid #ccc",
                               background: "#f7f7f7",
+                              width: "fit-content",
                             }}
                           >
                             {cnt}件
                           </span>
+                          {list.slice(0, 2).map((booking) => (
+                            <div
+                              key={booking.bookingId}
+                              style={{
+                                fontSize: 11,
+                                padding: "4px 6px",
+                                borderRadius: 8,
+                                background: "#f2f2f2",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                              title={`${booking.slot} ${booking.subject}`}
+                            >
+                              {booking.slot} {booking.subject}
+                            </div>
+                          ))}
                         </div>
                       )}
                     </td>
@@ -228,9 +219,6 @@ useEffect(() => {
         </table>
       </div>
 
-      <p style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>
-        ※この管理者カレンダーはデモ用に localStorage（{DEMO_RES_KEY}）の予約から日別件数を集計して表示します。
-      </p>
     </main>
   );
 }
