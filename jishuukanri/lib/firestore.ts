@@ -180,3 +180,26 @@ export async function getBookingsByStudentAndMonth(
   const snap = await getDocs(q);
   return snap.docs.map((d) => d.data() as Booking);
 }
+
+/** 指定月の予約を取得（管理者向け・全件） */
+export async function getBookingsByMonth(
+  ym: string // "YYYY-MM"
+): Promise<Booking[]> {
+  const [yearStr, monthStr] = ym.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const endDay = new Date(year, month, 0).getDate();
+  const endDayStr = String(endDay).padStart(2, "0");
+  const start = `${ym}-01`;
+  const end = `${ym}-${endDayStr}`;
+
+  const q = query(
+    collection(db, "bookings"),
+    where("date", ">=", start),
+    where("date", "<=", end),
+    orderBy("date", "asc")
+  );
+
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => d.data() as Booking);
+}
